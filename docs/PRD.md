@@ -32,6 +32,9 @@ Aplicação web (MVP) que:
 - RF-008 Exibição em mapa (Leaflet) + lista ordenada por distância, com endereço quando o OSM tem.
 - RF-009 Validação estrita de entradas (zod) e rate limiting (30 req/min por IP).
 - RF-010 Exemplos clicáveis que enviam a pergunta automaticamente.
+- RF-012 Transparência de precisão da geocodificação (cadeia ViaCEP + Nominatim + reverse).
+- RF-013 Resiliência de latência com Fail-Fast (3.5s), Circuit Breaker e Cache em memória (LRU/TTL).
+- RF-014 Foco interativo e navegação no mapa (flyTo + auto-popup) ao selecionar unidade na lista.
 
 ## Fora do escopo (importante depois, não agora)
 
@@ -44,16 +47,18 @@ Aplicação web (MVP) que:
 ## Premissas e restrições
 
 - Dados de unidades vêm do OpenStreetMap — cobertura e endereços variam por cidade (limitação conhecida e aceita, ver PRE_MORTEM R-01).
-- Serviços externos públicos (Overpass, Nominatim) têm rate limit próprio; o cliente usa fallback de endpoints e timeouts curtos.
+- Serviços externos públicos (Overpass, Nominatim) têm rate limit próprio; o cliente usa fallback de endpoints, circuit breaker e timeouts curtos (3.5s).
 - Sem chave de IA o sistema continua 100% funcional (KB + fallback).
 - O sistema NÃO diagnostica — disclaimers obrigatórios na resposta e na UI.
 
 ## Métricas de sucesso (MVP)
 
 - Triagem KB responde < 50 ms.
-- Pipeline completo (com busca) responde < 10 s com Overpass saudável.
+- Pipeline completo com Overpass/Nominatim responde com fail-fast (sem travar em timeouts de 50s).
+- Consultas no mesmo quadrante respondem via cache em < 10 ms.
 - 0 farmácias/dentistas nas recomendações (verificado por teste).
 - Bairros diferentes retornam unidades #1 diferentes (verificado por teste).
+- Seleção de unidade sincroniza visualmente o mapa com abertura de popup.
 
 ## Critérios de aceite de alto nível
 

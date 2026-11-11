@@ -28,11 +28,11 @@ MVP público de triagem + localização; dados de unidades só existem em OpenSt
 **Motivo:** "Espaço Vida" contém "spa"; "pubs" contém "ubs". Descoberto em teste adversário.
 **Trade-off:** siglas dentro de nomes compostos sem separador não são detectadas (raro).
 
-## ADR-005 — Cliente Overpass com fallback de endpoints e bbox de 4 casas
+## ADR-005 — Cliente Overpass com Fail-Fast (3.5s) e bbox de 4 casas
 
-**Decisão:** cadeia `OVERPASS_API_URL → lz4 → overpass-api.de → z`; bbox sempre `.toFixed(4)`; User-Agent próprio; timeout 20 s (query `[timeout:25]`).
-**Motivo:** float impreciso (`-2.9669000000000003`) causava HTTP 406; endpoint principal sofre 504/506; serverless tem limite de tempo.
-**Trade-off:** lz4 pode saturar em picos — cadeia mitiga.
+**Decisão:** cadeia `OVERPASS_API_URL → lz4 → overpass-api.de → z`; bbox sempre `.toFixed(4)`; User-Agent próprio; timeout agressivo de **3.5 s** por tentativa (em vez de 20s).
+**Motivo:** evitar que requisições fiquem 60 segundos presas em instabilidades da Overpass pública antes de acionar o fallback.
+**Trade-off:** queries extremamente pesadas cortam para o fallback mais rapidamente — comportamento seguro e conservador.
 
 ## ADR-006 — Rate limit em memória (aproximado em serverless)
 
@@ -45,14 +45,24 @@ MVP público de triagem + localização; dados de unidades só existem em OpenSt
 **Motivo:** Nominatim permite 1 req/s — preencher 600 unidades custaria 10 min por busca e bane o User-Agent.
 **Consequência:** ~25–40% das unidades de Manaus aparecem sem endereço (dado ausente no OSM). UI exibe "Endereço não disponível". Melhoria futura: cache + enriquecimento assíncrono.
 
+## ADR-008 — Circuit Breaker e Cache em Memória com TTL para APIs Geoespaciais
+
+**Decisão:** implementar store em memória leve (LRU com TTL) para POIs (15 min) e geocodificação (30 min). Se a Overpass acumular 2 falhas consecutivas, o Circuit Breaker abre por 60s, roteando chamadas subsequentes imediatamente ao fallback do Nominatim sem espera.
+**Motivo:** derrubar latência média de consultas de ~57s para < 3-5s e garantir respostas em < 10ms para consultas na mesma região.
+**Trade-off:** dados atualizados no OSM levam até 15 minutos para refletir no cache local da instância.
+
+## ADR-009 — Sincronização Bidirecional e Foco Interativo no Mapa
+
+**Decisão:** conectar o estado de seleção da unidade (`selectedFacility`) diretamente ao componente `HealthMap`. Ao selecionar um item da lista, o Leaflet executa `map.flyTo` nas coordenadas da unidade e dispara `marker.openPopup()`.
+**Motivo:** eliminar o desacoplamento visual relatado pelo usuário, onde clicar na unidade listada não mostrava sua posição no mapa.
+
 ## Limitações conhecidas
 
 1. Dados OSM variam por cidade (Manaus validado; capitais grandes funcionam; cidades pequenas podem ter poucas unidades mapeadas).
-2. Rate limit em memória não é rígido em serverless (ADR-006).
+2. Rate limit e caches em memória são por instância em serverless (ADR-006 / ADR-008).
 
 ## Pendências (próximos passos recomendados)
 
-- Cache das buscas Overpass (TTL 15–30 min) para reduzir latência e 429.
-- Store compartilhado de rate limit (Upstash Redis) no deploy.
-- Enriquecimento de endereços com fila assíncrona + cache.
+- Store compartilhado de rate limit e cache distribuído (Upstash Redis) se houver escala multi-região.
+- Enriquecimento de endereços com fila assíncrona.
 - Monitoramento simples (logs estruturados → Vercel Analytics/Sentry).

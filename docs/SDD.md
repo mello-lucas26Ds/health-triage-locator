@@ -19,11 +19,12 @@ Next.js 16 (App Router) com camadas organizadas por responsabilidade. Aplicaçã
 ┌───────▼───── domain ────▼────── infrastructure ───┐
 │ health-kb.ts        (KB de triagem, pura)        │
 │ facility-classifier (classificação, pura)        │
-│ geo.ts (haversine)   → overpass.ts (OSM)         │
-│ validation.ts (zod)  → nominatim.ts (geocode)    │
-│ types.ts             → gemini.ts (IA opcional)   │
-│                      → rate-limit.ts             │
-└───────────────────────────────────────────────────┘
+│ geo.ts (haversine)   → overpass.ts (OSM, fail-fast)│
+│ validation.ts (zod)  → nominatim.ts (geocode)      │
+│ types.ts             → cache.ts (LRU / TTL)        │
+│                      → gemini.ts (IA opcional)     │
+│                      → rate-limit.ts               │
+└─────────────────────────────────────────────────────┘
 ```
 
 **Nota (ADR-001):** o App Router exige `src/app`; a camada de apresentação é `src/app` + `src/components` + `src/hooks`. Os controladores HTTP são rotas finas que validam (zod) e delegam aos casos de uso.
@@ -37,12 +38,14 @@ Next.js 16 (App Router) com camadas organizadas por responsabilidade. Aplicaçã
 | `domain/geo` | Haversine, arredondamento. | nenhuma |
 | `domain/validation` | Schemas zod de borda, limites, formatação de erro. | zod |
 | `application/process-health-query` | Pipeline MCP completo + instrumentação de latências. | domain + infrastructure |
-| `application/search-nearby-facilities` | Busca por coordenadas (contrato isolado). | domain + infrastructure |
-| `infrastructure/overpass` | Query builder (bbox 4 casas), fallback de endpoints, mapeamento → Facility. | domain |
-| `infrastructure/nominatim` | Geocodificação: coordenadas → CEP → texto (pt-BR, Brazil). | — |
+| `application/search-nearby-facilities` | Busca por coordenadas com fallback resiliente. | domain + infrastructure |
+| `infrastructure/overpass` | Query builder (bbox 4 casas), timeout rápido 3.5s, circuit breaker. | domain, cache |
+| `infrastructure/nominatim` | Geocodificação + fallback POIs com UPA/SPA e cache. | cache |
+| `infrastructure/cache` | Cache em memória leve (LRU/TTL) para POIs e geocodificação. | — |
 | `infrastructure/gemini` | Triagem por IA (JSON estrito, validado antes de usar). | @google/generative-ai |
 | `infrastructure/rate-limit` | Limitador com relógio injetável (testável). | — |
-| `middleware.ts` | Rate limit de borda + headers + CORS + métodos. | infrastructure/rate-limit |
+| `components/HealthMap` | Mapa Leaflet com sincronização bidirecional e flyTo na seleção. | leaflet |
+| `proxy.ts` | Rate limit de borda + headers + CORS + métodos. | infrastructure/rate-limit |
 
 ## Contratos de API (ver SPEC § Endpoints)
 
@@ -52,10 +55,10 @@ Erros padronizados: `{ "error": "mensagem em PT-BR" }` com status 400 (contrato)
 
 1. `POST /api/mcp/process` → zod valida → `processHealthQuery()`.
 2. KB match (ou IA opcional, ou fallback conservador) → `TriageResult`.
-3. `geocodeAddress(location)` se localização e sem lat/lng; falha → padrão Manaus.
-4. `fetchOverpassElements` (bbox toFixed(4), UA, timeout 20 s, 3 endpoints) → `mapElementsToFacilities` (exclusão → classificação → haversine → filtro de raio → ordenação).
+3. `geocodeAddress(location)` com cache em memória; falha → padrão Manaus.
+4. `fetchOverpassElements` (fail-fast 3.5s, circuit breaker, cache) → fallback `searchAmenitiesNear` com UPA/SPA.
 5. `prioritizeByType(triage.facility_type)` → lista (10) + mapa (30).
-6. Resposta com `mcp_calls[]` instrumentado por etapa.
+6. UI sincroniza lista e mapa: clique na unidade executa `map.flyTo` e auto-popup.
 
 ## Integrações externas
 
