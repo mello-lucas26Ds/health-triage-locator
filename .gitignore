@@ -11,30 +11,34 @@ dist/
 *.tsbuildinfo
 next-env.d.ts
 
-# Environment variables — NUNCA versionar segredos
+# Environment variables — NUNCA versionar segredos ou chaves
 .env
+.env*.local
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+!.env.example
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
 dev.log
 server.log
 
-# Test coverage
+# Test coverage & relatórios
 coverage/
+.nyc_output/
 
-# Database local (se usar Prisma no futuro)
+# Database local (se usado no futuro)
 *.db
 *.sqlite
 *.sqlite3
 prisma/migrations/dev/
 
-# Python (backend opcional)
+# Python / Ambientes virtuais
 __pycache__/
 *.py[cod]
 .venv/
@@ -42,17 +46,22 @@ venv/
 env/
 .pytest_cache/
 
-# OS / Editor
+# OS / Sistema operacional
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# IDEs e Editores
 .idea/
+*.swp
+*.swo
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
 
-# Vercel
-.vercel
+# Deploy Vercel
+.vercel/
 
-# Dados grandes gerados localmente
+# Dados temporários ou grandes gerados localmente
 scripts/*.json
 data/
